@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../../lib/prisma";
-import jwt, { SignOptions } from "jsonwebtoken";
+import jwt, { JwtPayload, SignOptions } from "jsonwebtoken";
 import config from "../../config";
 
 interface LoginInput {
@@ -40,4 +40,42 @@ const loginServiceDB = async (payload: LoginInput) => {
   return { accessToken, refreshToken };
 };
 
-export { loginServiceDB };
+
+const refreshTokenServiceDB = async (token: string) => {
+  const verifiedToken = jwt.verify(token, config.jwt_refresh_secret!);
+
+  if (!verifiedToken) {
+    throw new Error("Invalid token");
+  }
+  const { id } = verifiedToken as JwtPayload;
+
+  const user = await prisma.user.findUnique({
+    where: {
+      id: id,
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  if (user?.active_status == "BLOCKED") {
+    throw new Error("Your account has been blocked. Please contact support.");
+  }
+
+  const PlaylodJwt = {
+    id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  };
+
+  const accessToken = jwt.sign(PlaylodJwt, config.jwt_access_secret!, {
+    expiresIn: config.jwt_access_expiration,
+  } as SignOptions);
+  return { accessToken };
+
+
+};
+
+export { loginServiceDB, refreshTokenServiceDB };
